@@ -1,0 +1,13 @@
+// Fetch cluster metrics from API
+async function fetchClusterMetrics() {
+    try {
+        const response = await fetch('/api/cluster-metrics');
+        const data = await response.json();
+        
+        updateDashboard(data);
+        return data;
+    } catch (error) {
+        console.error('Error fetching cluster metrics:', error);
+        return null;
+    }
+}

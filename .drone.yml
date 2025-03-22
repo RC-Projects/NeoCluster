@@ -1,0 +1,22 @@
+kind: pipeline
+name: build-and-deploy
+
+steps:
+- name: build-and-push
+  image: plugins/docker
+  settings:
+    registry: your-registry.gitea.local
+    repo: your-registry.gitea.local/cyberpunk-dashboard
+    tags: 
+      - latest
+      - ${DRONE_COMMIT_SHA:0:8}
+    username:
+      from_secret: docker_username
+    password:
+      from_secret: docker_password
+
+- name: deploy-to-k8s
+  image: bitnami/kubectl
+  commands:
+    - kubectl apply -f dashboard-deployment.yaml
+    - kubectl rollout restart deployment/cyberpunk-dashboard
