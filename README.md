@@ -8,6 +8,3 @@ pip install -r requirements.txt
 
 # Run the API server
 python k8s_metrics_api.py
-
-# Insert Meme Here
-lel
