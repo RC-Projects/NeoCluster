@@ -1,11 +1,10 @@
-FROM python:3.9-slim
+FROM --platform=linux/arm64 python:3.9-slim
 
-# Install required packages
-RUN apt-get update && apt-get install -y curl gnupg apt-transport-https && \
-    curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - && \
-    echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" > /etc/apt/sources.list.d/kubernetes.list && \
-    apt-get update && \
-    apt-get install -y kubectl && \
+# Install kubectl for ARM architecture
+RUN apt-get update && apt-get install -y curl && \
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/arm64/kubectl" && \
+    chmod +x kubectl && \
+    mv kubectl /usr/local/bin/ && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
