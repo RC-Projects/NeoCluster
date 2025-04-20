@@ -1,13 +1,1118 @@
-// Fetch cluster metrics from API
-async function fetchClusterMetrics() {
-    try {
-        const response = await fetch('/api/cluster-metrics');
-        const data = await response.json();
-        
-        updateDashboard(data);
-        return data;
-    } catch (error) {
-        console.error('Error fetching cluster metrics:', error);
-        return null;
-    }
-}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeoCluster Dashboard</title>
+    <style>
+        :root {
+            --neon-pink: #ff2a6d;
+            --neon-blue: #05d9e8;
+            --neon-purple: #d800ff;
+            --neon-cyan: #01ffc3;
+            --neon-yellow: #ffe600;
+            --dark-bg: #0d0221;
+            --darker-bg: #080215;
+            --panel-bg: rgba(13, 2, 33, 0.7);
+            --text-color: #ffffff;
+            --accent-color: #ff2a6d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Courier New', monospace;
+            color: var(--text-color);
+        }
+
+        body {
+            background-color: var(--dark-bg);
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(255, 42, 109, 0.1) 0%, transparent 40%),
+                radial-gradient(circle at 85% 30%, rgba(5, 217, 232, 0.1) 0%, transparent 40%),
+                linear-gradient(to bottom, transparent 30%, rgba(13, 2, 33, 0.9) 100%),
+                linear-gradient(to right, var(--dark-bg), var(--darker-bg), var(--dark-bg));
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPgogIDxkZWZzPgogICAgPHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CiAgICAgIDxwYXRoIGQ9Ik0gNTAgMCBMIDAgMCAwIDUwIiBmaWxsPSJub25lIiBzdHJva2U9InJnYmEoNSwgMjE3LCAyMzIsIDAuMDgpIiBzdHJva2Utd2lkdGg9IjAuNSIvPgogICAgPC9wYXR0ZXJuPgogIDwvZGVmcz4KICA8cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIiAvPgo8L3N2Zz4=');
+            opacity: 0.3;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            position: relative;
+            padding: 20px 0;
+        }
+
+        .title-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .glitch-title {
+            font-size: 3rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            position: relative;
+            color: var(--text-color);
+            text-shadow: 
+                0 0 10px var(--neon-pink),
+                0 0 20px var(--neon-pink),
+                0 0 30px var(--neon-pink);
+            animation: glitch 5s infinite;
+        }
+
+        @keyframes glitch {
+            0%, 95%, 100% {
+                transform: none;
+                opacity: 1;
+                text-shadow: 
+                    0 0 10px var(--neon-pink),
+                    0 0 20px var(--neon-pink),
+                    0 0 30px var(--neon-pink);
+            }
+            92.5% {
+                transform: translate(-2px, 0);
+                opacity: 0.8;
+                text-shadow: 
+                    0 0 10px var(--neon-blue),
+                    0 0 20px var(--neon-blue),
+                    0 0 30px var(--neon-blue);
+            }
+            97.5% {
+                transform: translate(2px, 0);
+                opacity: 0.8;
+                text-shadow: 
+                    0 0 10px var(--neon-cyan),
+                    0 0 20px var(--neon-cyan),
+                    0 0 30px var(--neon-cyan);
+            }
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            margin-top: 10px;
+            color: var(--neon-blue);
+            position: relative;
+            display: inline-block;
+        }
+
+        .subtitle::after {
+            content: "";
+            position: absolute;
+            bottom: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 150px;
+            height: 1px;
+            background: linear-gradient(90deg, 
+                transparent, 
+                var(--neon-blue),
+                var(--neon-blue),
+                transparent
+            );
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .cluster-overview {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, 
+                rgba(13, 2, 33, 0.8), 
+                rgba(8, 2, 21, 0.9)
+            );
+            border: 1px solid var(--neon-blue);
+            box-shadow: 0 0 15px rgba(5, 217, 232, 0.3);
+            border-radius: 5px;
+            padding: 25px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .node-panel {
+            background: linear-gradient(135deg, 
+                rgba(13, 2, 33, 0.8), 
+                rgba(8, 2, 21, 0.9)
+            );
+            border: 1px solid var(--neon-pink);
+            box-shadow: 0 0 15px rgba(255, 42, 109, 0.3);
+            border-radius: 5px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .node-panel:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(255, 42, 109, 0.5);
+        }
+
+        .cyberpunk-border {
+            position: absolute;
+            background: linear-gradient(90deg, 
+                transparent, 
+                var(--neon-blue), 
+                transparent
+            );
+            animation: borderPulse 4s infinite;
+        }
+
+        @keyframes borderPulse {
+            0%, 100% {
+                opacity: 0.6;
+            }
+            50% {
+                opacity: 1;
+            }
+        }
+
+        .border-top {
+            top: 0;
+            left: 0;
+            height: 2px;
+            width: 100%;
+        }
+
+        .border-right {
+            top: 0;
+            right: 0;
+            height: 100%;
+            width: 2px;
+            animation-delay: 1s;
+        }
+
+        .border-bottom {
+            bottom: 0;
+            left: 0;
+            height: 2px;
+            width: 100%;
+            animation-delay: 2s;
+        }
+
+        .border-left {
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 2px;
+            animation-delay: 3s;
+        }
+
+        .node-panel .border-top, 
+        .node-panel .border-bottom {
+            background: linear-gradient(90deg, 
+                transparent, 
+                var(--neon-pink), 
+                transparent
+            );
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 42, 109, 0.3);
+            position: relative;
+        }
+
+        .cluster-overview .panel-header {
+            border-bottom: 1px solid rgba(5, 217, 232, 0.3);
+        }
+
+        .panel-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--neon-pink);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            display: flex;
+            align-items: center;
+        }
+
+        .cluster-overview .panel-title {
+            color: var(--neon-blue);
+        }
+
+        .panel-title::before {
+            content: "//";
+            margin-right: 8px;
+            font-size: 1.2rem;
+            opacity: 0.7;
+        }
+
+        .status-indicator {
+            font-size: 0.9rem;
+            padding: 5px 10px;
+            border-radius: 20px;
+            background-color: rgba(1, 255, 195, 0.2);
+            color: var(--neon-cyan);
+            border: 1px solid var(--neon-cyan);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .status-indicator.warning {
+            background-color: rgba(255, 230, 0, 0.2);
+            color: var(--neon-yellow);
+            border-color: var(--neon-yellow);
+        }
+
+        .status-indicator.danger {
+            background-color: rgba(255, 42, 109, 0.2);
+            color: var(--neon-pink);
+            border-color: var(--neon-pink);
+        }
+
+        .status-indicator::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(255, 255, 255, 0.2), 
+                transparent
+            );
+            animation: statusPulse 3s infinite;
+        }
+
+        @keyframes statusPulse {
+            0% {
+                left: -100%;
+            }
+            50%, 100% {
+                left: 100%;
+            }
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .stat-item {
+            margin-bottom: 15px;
+        }
+
+        .stat-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 1rem;
+        }
+
+        .stat-name {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .stat-value {
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+        }
+
+        .cluster-overview .stat-value {
+            color: var(--neon-blue);
+        }
+
+        .node-panel .stat-value {
+            color: var(--neon-pink);
+        }
+
+        .progress-container {
+            height: 10px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%; /* Set by JavaScript */
+            position: relative;
+            transition: width 1s ease;
+            border-radius: 5px;
+        }
+
+        .progress-bar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: repeating-linear-gradient(
+                45deg,
+                rgba(255, 255, 255, 0.1),
+                rgba(255, 255, 255, 0.1) 10px,
+                rgba(255, 255, 255, 0.2) 10px,
+                rgba(255, 255, 255, 0.2) 20px
+            );
+        }
+
+        .cpu-bar {
+            background: linear-gradient(90deg, var(--neon-blue), var(--neon-cyan));
+            box-shadow: 0 0 10px var(--neon-blue);
+        }
+
+        .ram-bar {
+            background: linear-gradient(90deg, var(--neon-purple), var(--neon-pink));
+            box-shadow: 0 0 10px var(--neon-purple);
+        }
+
+        .storage-bar {
+            background: linear-gradient(90deg, var(--neon-cyan), var(--neon-blue));
+            box-shadow: 0 0 10px var(--neon-cyan);
+        }
+
+        .network-bar {
+            background: linear-gradient(90deg, var(--neon-yellow), var(--neon-pink));
+            box-shadow: 0 0 10px var(--neon-yellow);
+        }
+
+        .progress-pulse {
+            position: absolute;
+            top: 0;
+            left: -50%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(255, 255, 255, 0.3), 
+                transparent
+            );
+            animation: progressPulse 2s infinite;
+        }
+
+        @keyframes progressPulse {
+            0% {
+                left: -50%;
+            }
+            100% {
+                left: 100%;
+            }
+        }
+
+        .node-details {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .detail-label {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .detail-value {
+            font-family: 'Courier New', monospace;
+            color: var(--neon-cyan);
+        }
+
+        .refresh-button {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background-color: var(--darker-bg);
+            color: var(--neon-pink);
+            border: 1px solid var(--neon-pink);
+            padding: 12px 25px;
+            border-radius: 30px;
+            font-size: 1rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px rgba(255, 42, 109, 0.5);
+            z-index: 100;
+        }
+
+        .refresh-button::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            border-radius: 30px;
+            background: var(--neon-pink);
+            opacity: 0.2;
+            z-index: -1;
+            animation: buttonPulse 3s ease-in-out infinite;
+        }
+
+        @keyframes buttonPulse {
+            0%, 100% {
+                opacity: 0.2;
+            }
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        .refresh-button:hover {
+            background-color: rgba(255, 42, 109,.2);
+            box-shadow: 0 0 20px rgba(255, 42, 109, 0.8);
+        }
+
+        .refresh-button:active {
+            transform: scale(0.95);
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            padding: 20px;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.5);
+            position: relative;
+        }
+
+        footer::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 300px;
+            height: 1px;
+            background: linear-gradient(90deg, 
+                transparent, 
+                var(--neon-blue), 
+                transparent
+            );
+        }
+
+        /* Circuit decoration */
+        .circuit-decoration {
+            position: absolute;
+            z-index: -1;
+            opacity: 0.15;
+            pointer-events: none;
+        }
+
+        .circuit-top-right {
+            top: 0;
+            right: 0;
+            width: 300px;
+            height: 300px;
+        }
+
+        .circuit-bottom-left {
+            bottom: 0;
+            left: 0;
+            width: 300px;
+            height: 300px;
+        }
+
+        /* Digital rain effect */
+        .digit-rain {
+            position: absolute;
+            color: var(--neon-cyan);
+            font-family: monospace;
+            font-size: 12px;
+            opacity: 0.3;
+            z-index: -1;
+            animation: rain linear infinite;
+        }
+
+        @keyframes rain {
+            0% {
+                transform: translateY(-20px);
+            }
+            100% {
+                transform: translateY(100vh);
+            }
+        }
+
+        /* Time counter in header */
+        .time-display {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            color: var(--neon-cyan);
+            background-color: rgba(13, 2, 33, 0.7);
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid var(--neon-blue);
+        }
+
+        /* Data pulse animation */
+        @keyframes dataPulse {
+            0% {
+                box-shadow: 0 0 5px var(--neon-blue);
+            }
+            50% {
+                box-shadow: 0 0 20px var(--neon-blue);
+            }
+            100% {
+                box-shadow: 0 0 5px var(--neon-blue);
+            }
+        }
+
+        .data-pulse {
+            animation: dataPulse 4s infinite;
+        }
+
+        /* Pod metrics table styles */
+        .pods-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            color: var(--text-color);
+        }
+
+        .pods-table th, .pods-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 42, 109, 0.2);
+        }
+
+        .pods-table th {
+            background-color: rgba(0, 0, 0, 0.3);
+            color: var(--neon-blue);
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+        }
+
+        .pods-table tr:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .pod-name {
+            color: var(--neon-pink);
+            font-weight: bold;
+        }
+
+        .pod-status {
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            background-color: rgba(1, 255, 195, 0.2);
+            color: var(--neon-cyan);
+        }
+
+        .pod-status.warning {
+            background-color: rgba(255, 230, 0, 0.2);
+            color: var(--neon-yellow);
+        }
+
+        .pod-status.danger {
+            background-color: rgba(255, 42, 109, 0.2);
+            color: var(--neon-pink);
+        }
+
+        .view-all-button {
+            background-color: var(--darker-bg);
+            color: var(--neon-blue);
+            border: 1px solid var(--neon-blue);
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+        }
+
+        .view-all-button:hover {
+            background-color: rgba(5, 217, 232, 0.2);
+            box-shadow: 0 0 10px rgba(5, 217, 232, 0.5);
+        }
+
+        /* Media queries for responsiveness */
+        @media (max-width: 768px) {
+            .stat-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .glitch-title {
+                font-size: 2rem;
+            }
+            
+            .subtitle {
+                font-size: 1rem;
+            }
+            
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Node panel animation on load */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .node-panel {
+            animation: fadeInUp 0.6s ease forwards;
+        }
+    </style>
+</head>
+<body>
+    <!-- Digital rain effect -->
+    <div id="digitalRain"></div>
+    
+    <!-- Circuit decoration SVGs -->
+    <svg class="circuit-decoration circuit-top-right" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <path d="M200 0 L150 0 L150 50 L100 50 L100 100 L150 100 L150 150 L50 150 L50 200" stroke="var(--neon-blue)" fill="none" stroke-width="2"/>
+        <path d="M170 0 L170 30 L120 30 L120 80 L80 80 L80 130 L170 130 L170 170 L30 170" stroke="var(--neon-pink)" fill="none" stroke-width="1"/>
+        <circle cx="150" cy="50" r="5" fill="var(--neon-blue)"/>
+        <circle cx="100" cy="100" r="5" fill="var(--neon-pink)"/>
+        <circle cx="150" cy="150" r="5" fill="var(--neon-blue)"/>
+        <circle cx="50" cy="200" r="5" fill="var(--neon-cyan)"/>
+    </svg>
+
+    <svg class="circuit-decoration circuit-bottom-left" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0 200 L50 200 L50 150 L100 150 L100 100 L50 100 L50 50 L150 50 L150 0" stroke="var(--neon-pink)" fill="none" stroke-width="2"/>
+        <path d="M30 200 L30 170 L80 170 L80 120 L120 120 L120 70 L30 70 L30 30 L170 30" stroke="var(--neon-blue)" fill="none" stroke-width="1"/>
+        <circle cx="50" cy="150" r="5" fill="var(--neon-pink)"/>
+        <circle cx="100" cy="100" r="5" fill="var(--neon-blue)"/>
+        <circle cx="50" cy="50" r="5" fill="var(--neon-pink)"/>
+        <circle cx="150" cy="0" r="5" fill="var(--neon-cyan)"/>
+    </svg>
+
+    <div class="container">
+        <header>
+            <div class="time-display" id="timeDisplay">00:00:00.000</div>
+            <div class="title-container">
+                <h1 class="glitch-title">NeoCluster</h1>
+            </div>
+            <p class="subtitle">MicroK8s Monitoring System</p>
+        </header>
+
+        <div class="dashboard" id="dashboard">
+            <!-- Dashboard content will be dynamically populated via JavaScript -->
+        </div>
+
+        <button class="refresh-button" id="refreshButton">SYNCHRONIZE</button>
+
+        <footer>
+            NEOCLUSTER INTERFACE v1.0 • ESTABLISHED CONNECTION
+        </footer>
+    </div>
+
+    <script>
+        // Create digital rain effect
+        function createDigitalRain() {
+            const container = document.getElementById('digitalRain');
+            const width = window.innerWidth;
+            const numberOfRains = Math.floor(width / 40); // One rain column per 40px
+            
+            for (let i = 0; i < numberOfRains; i++) {
+                const rain = document.createElement('div');
+                rain.className = 'digit-rain';
+                rain.style.left = `${i * 40 + Math.random() * 20}px`;
+                rain.style.animationDuration = `${5 + Math.random() * 15}s`;
+                rain.style.animationDelay = `${Math.random() * 5}s`;
+                
+                // Random binary/hex content
+                let content = '';
+                for (let j = 0; j < 10 + Math.random() * 20; j++) {
+                    content += Math.random() > 0.5 ? '1' : '0';
+                    content += '<br>';
+                }
+                rain.innerHTML = content;
+                
+                container.appendChild(rain);
+            }
+        }
+
+        // Update time display
+        function updateTimeDisplay() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+            
+            document.getElementById('timeDisplay').textContent = 
+                `${hours}:${minutes}:${seconds}.${milliseconds}`;
+            
+            requestAnimationFrame(updateTimeDisplay);
+        }
+
+        // Fetch cluster metrics from API
+        async function fetchClusterMetrics() {
+            try {
+                const response = await fetch('/api/cluster-metrics');
+                const data = await response.json();
+                
+                updateDashboard(data);
+                return data;
+            } catch (error) {
+                console.error('Error fetching cluster metrics:', error);
+                return null;
+            }
+        }
+
+        // Update dashboard with metrics data
+        function updateDashboard(data) {
+            // Clear existing content
+            const dashboard = document.getElementById('dashboard');
+            dashboard.innerHTML = '';
+            
+            // Add cluster overview
+            const overview = document.createElement('div');
+            overview.className = 'cluster-overview data-pulse';
+            
+            // Determine cluster status
+            let clusterStatus = 'ONLINE';
+            let statusClass = '';
+            
+            if (data.nodes && data.nodes.some(node => node.status === 'danger')) {
+                clusterStatus = 'DEGRADED';
+                statusClass = 'warning';
+            }
+            
+            overview.innerHTML = `
+                <div class="cyberpunk-border border-top"></div>
+                <div class="cyberpunk-border border-right"></div>
+                <div class="cyberpunk-border border-bottom"></div>
+                <div class="cyberpunk-border border-left"></div>
+                
+                <div class="panel-header">
+                    <div class="panel-title">System Overview</div>
+                    <div class="status-indicator ${statusClass}">${clusterStatus}</div>
+                </div>
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">
+                            <span class="stat-name">CPU UTILIZATION</span>
+                            <span class="stat-value">${data.summary.totalCpuUsage}%</span>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar cpu-bar" style="width: ${data.summary.totalCpuUsage}%"></div>
+                            <div class="progress-pulse"></div>
+                        </div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">
+                            <span class="stat-name">MEMORY ALLOCATION</span>
+                            <span class="stat-value">${data.summary.totalRamUsage}%</span>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar ram-bar" style="width: ${data.summary.totalRamUsage}%"></div>
+                            <div class="progress-pulse"></div>
+                        </div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">
+                            <span class="stat-name">STORAGE CAPACITY</span>
+                            <span class="stat-value">${data.summary.totalStorageUsage}%</span>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar storage-bar" style="width: ${data.summary.totalStorageUsage}%"></div>
+                            <div class="progress-pulse"></div>
+                        </div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">
+                            <span class="stat-name">NETWORK BANDWIDTH</span>
+                            <span class="stat-value">${data.summary.totalNetworkUsage} MB/s</span>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar network-bar" style="
+</div>
+                        <div class="progress-container">
+                            <div class="progress-bar network-bar" style="width: ${Math.min(data.summary.totalNetworkUsage/10, 100)}%"></div>
+                            <div class="progress-pulse"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="node-details">
+                    <div class="detail-item">
+                        <span class="detail-label">NODES ONLINE:</span>
+                        <span class="detail-value">${data.summary.nodesOnline}/${data.summary.nodesTotal}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">PODS RUNNING:</span>
+                        <span class="detail-value">${data.summary.podsRunning}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">LAST UPDATED:</span>
+                        <span class="detail-value">${new Date().toLocaleString()}</span>
+                    </div>
+                </div>
+            `;
+            
+            dashboard.appendChild(overview);
+            
+            // Create node panels
+            if (data.nodes && data.nodes.length > 0) {
+                data.nodes.forEach((node, index) => {
+                    // Determine node status
+                    let statusClass = '';
+                    let statusText = 'ONLINE';
+                    
+                    if (node.status === 'danger') {
+                        statusClass = 'danger';
+                        statusText = 'CRITICAL';
+                    } else if (node.status === 'warning') {
+                        statusClass = 'warning';
+                        statusText = 'WARNING';
+                    }
+                    
+                    // Create node panel
+                    const nodePanel = document.createElement('div');
+                    nodePanel.className = 'node-panel';
+                    nodePanel.style.animationDelay = `${0.1 * (index + 1)}s`;
+                    
+                    nodePanel.innerHTML = `
+                        <div class="cyberpunk-border border-top"></div>
+                        <div class="cyberpunk-border border-right"></div>
+                        <div class="cyberpunk-border border-bottom"></div>
+                        <div class="cyberpunk-border border-left"></div>
+                        
+                        <div class="panel-header">
+                            <div class="panel-title">${node.name}</div>
+                            <div class="status-indicator ${statusClass}">${statusText}</div>
+                        </div>
+                        <div class="stat-grid">
+                            <div class="stat-item">
+                                <div class="stat-label">
+                                    <span class="stat-name">CPU (${node.cpuCores} cores)</span>
+                                    <span class="stat-value">${node.cpuUsage}%</span>
+                                </div>
+                                <div class="progress-container">
+                                    <div class="progress-bar cpu-bar" style="width: ${node.cpuUsage}%"></div>
+                                    <div class="progress-pulse"></div>
+                                </div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">
+                                    <span class="stat-name">RAM (${node.ramTotal} GB)</span>
+                                    <span class="stat-value">${node.ramUsage}%</span>
+                                </div>
+                                <div class="progress-container">
+                                    <div class="progress-bar ram-bar" style="width: ${node.ramUsage}%"></div>
+                                    <div class="progress-pulse"></div>
+                                </div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">
+                                    <span class="stat-name">STORAGE (${node.storageTotal} GB)</span>
+                                    <span class="stat-value">${node.storageUsage}%</span>
+                                </div>
+                                <div class="progress-container">
+                                    <div class="progress-bar storage-bar" style="width: ${node.storageUsage}%"></div>
+                                    <div class="progress-pulse"></div>
+                                </div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">
+                                    <span class="stat-name">NETWORK</span>
+                                    <span class="stat-value">${node.networkBandwidth} MB/s</span>
+                                </div>
+                                <div class="progress-container">
+                                    <div class="progress-bar network-bar" style="width: ${node.networkBandwidth}%"></div>
+                                    <div class="progress-pulse"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="node-details">
+                            <div class="detail-item">
+                                <span class="detail-label">ROLE:</span>
+                                <span class="detail-value">${node.role}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">IP:</span>
+                                <span class="detail-value">${node.ipAddress}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">KERNEL:</span>
+                                <span class="detail-value">${node.kernel || 'N/A'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">UPTIME:</span>
+                                <span class="detail-value">${node.uptime || 'N/A'}</span>
+                            </div>
+                        </div>
+                    `;
+                    
+                    dashboard.appendChild(nodePanel);
+                });
+            }
+
+            // Add pod metrics section for demonstration
+            // In this example we're adding simulated pods since the API doesn't yet return pod data
+            const podsContainer = document.createElement('div');
+            podsContainer.className = 'cluster-overview data-pulse';
+            podsContainer.style.marginTop = '30px';
+            
+            podsContainer.innerHTML = `
+                <div class="cyberpunk-border border-top"></div>
+                <div class="cyberpunk-border border-right"></div>
+                <div class="cyberpunk-border border-bottom"></div>
+                <div class="cyberpunk-border border-left"></div>
+                
+                <div class="panel-header">
+                    <div class="panel-title">Pod Metrics</div>
+                    <div class="status-indicator">TOTAL: ${data.summary.podsRunning}</div>
+                </div>
+            `;
+            
+            // Create a table for pod metrics
+            const podsTable = document.createElement('table');
+            podsTable.className = 'pods-table';
+            podsTable.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Namespace</th>
+                        <th>Status</th>
+                        <th>Node</th>
+                        <th>CPU (m)</th>
+                        <th>Memory (MB)</th>
+                    </tr>
+                </thead>
+                <tbody id="pods-table-body">
+                </tbody>
+            `;
+            
+            podsContainer.appendChild(podsTable);
+            dashboard.appendChild(podsContainer);
+            
+            // Add simulated pod data to the table
+            const tbody = document.getElementById('pods-table-body');
+            
+            // Create some simulated pod data
+            const simulatedPods = [];
+            
+            // Use names from the microk8s ecosystem for realism
+            const namespaces = ['kube-system', 'default', 'ingress', 'monitoring', 'storage'];
+            const podPrefixes = ['coredns', 'calico', 'nginx-ingress', 'kube-proxy', 'metrics-server', 
+                              'dashboard', 'prometheus', 'grafana', 'storage', 'local-path-provisioner'];
+            
+            // Generate random pods based on actual number of running pods
+            const podCount = Math.min(data.summary.podsRunning, 30); // Show up to 30 pods
+            for (let i = 0; i < podCount; i++) {
+                const prefix = podPrefixes[Math.floor(Math.random() * podPrefixes.length)];
+                const namespace = namespaces[Math.floor(Math.random() * namespaces.length)];
+                const node = data.nodes[Math.floor(Math.random() * data.nodes.length)].name;
+                
+                simulatedPods.push({
+                    name: `${prefix}-${Math.floor(Math.random() * 10000)}`,
+                    namespace: namespace,
+                    status: Math.random() > 0.9 ? 'warning' : 'active',
+                    phase: Math.random() > 0.9 ? 'Pending' : 'Running',
+                    node: node,
+                    cpuUsage: Math.floor(Math.random() * 500),  // millicores
+                    memoryUsage: Math.floor(Math.random() * 1000)  // MB
+                });
+            }
+            
+            // Sort simulated pods by CPU usage (highest first)
+            simulatedPods.sort((a, b) => b.cpuUsage - a.cpuUsage);
+            
+            // Show pods
+            simulatedPods.forEach(pod => {
+                let statusClass = '';
+                if (pod.status === 'warning') {
+                    statusClass = 'warning';
+                } else if (pod.status === 'danger') {
+                    statusClass = 'danger';
+                }
+                
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="pod-name">${pod.name}</td>
+                    <td>${pod.namespace}</td>
+                    <td><span class="pod-status ${statusClass}">${pod.phase}</span></td>
+                    <td>${pod.node}</td>
+                    <td>${pod.cpuUsage.toFixed(1)}</td>
+                    <td>${pod.memoryUsage.toFixed(1)}</td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+            
+            // Add a "View All" button if there are many pods
+            if (data.summary.podsRunning > 30) {
+                const viewAllContainer = document.createElement('div');
+                viewAllContainer.style.textAlign = 'center';
+                viewAllContainer.style.marginTop = '15px';
+                
+                const viewAllButton = document.createElement('button');
+                viewAllButton.className = 'view-all-button';
+                viewAllButton.textContent = 'VIEW ALL PODS';
+                viewAllButton.onclick = function() {
+                    // Implementation for viewing all pods
+                    alert(`This would show all ${data.summary.podsRunning} pods. Currently showing 30.`);
+                };
+                
+                viewAllContainer.appendChild(viewAllButton);
+                podsContainer.appendChild(viewAllContainer);
+            }
+        }
+
+        // Initialize the dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            createDigitalRain();
+            updateTimeDisplay();
+            
+            // Initial data fetch
+            fetchClusterMetrics();
+            
+            // Setup refresh button
+            document.getElementById('refreshButton').addEventListener('click', function() {
+                this.classList.add('active');
+                setTimeout(() => this.classList.remove('active'), 300);
+                
+                fetchClusterMetrics();
+            });
+            
+            // Auto-refresh every 30 seconds
+            setInterval(fetchClusterMetrics, 45000);
+        });
+    </script>
+</body>
+</html>

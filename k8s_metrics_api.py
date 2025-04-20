@@ -2,6 +2,7 @@ from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 import os
 import json
+import requests
 from kubernetes import client, config
 
 app = Flask(__name__, static_url_path='')
@@ -22,6 +23,23 @@ except config.ConfigException:
 # Initialize Kubernetes API clients
 v1 = client.CoreV1Api()
 metrics_api = client.CustomObjectsApi()
+
+# Define Prometheus endpoint - update with your actual service address
+PROMETHEUS_URL = os.environ.get('PROMETHEUS_URL', 'http://kube-prom-stack-kube-prome-prometheus.observability.svc.cluster.local:9090')
+NODE_EXPORTER_PORT = 9100
+
+def query_prometheus(query):
+    """Query Prometheus and return the result"""
+    try:
+        response = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={'query': query})
+        if response.status_code == 200:
+            result = response.json()
+            if result['status'] == 'success' and result['data']['result']:
+                return result['data']['result']
+        return None
+    except Exception as e:
+        print(f"Error querying Prometheus: {e}")
+        return None
 
 @app.route('/')
 def index():
@@ -121,26 +139,72 @@ def get_cluster_metrics():
             cpu_percent = min(round((cpu_usage / max(cpu_capacity, 0.1)) * 100), 100)
             ram_percent = min(round((ram_usage / max(memory_capacity, 0.1)) * 100), 100)
             
-            # Storage metrics - estimate based on node information
-            storage_total = 0
-            storage_usage = 0
+            # Get IP address for node exporter queries
+            ip_address = 'Unknown'
+            for address in node.status.addresses:
+                if address.type == 'InternalIP':
+                    ip_address = address.address
+                    break
+            
+            # Get storage metrics from Prometheus node-exporter
+            storage_total = 100  # Default placeholder in GB
+            storage_usage = 50   # Default placeholder percentage
             
             try:
-                # Check for the largest mountpoint capacity
-                storage_total = 100  # Default placeholder
-                storage_usage = 50   # Default placeholder
+                # Query Prometheus for filesystem size (root filesystem)
+                fs_size_query = f'node_filesystem_size_bytes{{instance="{ip_address}:{NODE_EXPORTER_PORT}",mountpoint="/"}}'
+                fs_size_result = query_prometheus(fs_size_query)
                 
-                # Ideally, you would use a DaemonSet with node-exporter to get accurate disk metrics
+                # Query Prometheus for filesystem free space
+                fs_free_query = f'node_filesystem_free_bytes{{instance="{ip_address}:{NODE_EXPORTER_PORT}",mountpoint="/"}}'
+                fs_free_result = query_prometheus(fs_free_query)
+                
+                if fs_size_result and fs_free_result:
+                    # Convert bytes to GB
+                    fs_size_bytes = float(fs_size_result[0]['value'][1])
+                    fs_free_bytes = float(fs_free_result[0]['value'][1])
+                    fs_used_bytes = fs_size_bytes - fs_free_bytes
+                    
+                    storage_total = round(fs_size_bytes / (1024 * 1024 * 1024), 1)  # GB
+                    storage_usage = round((fs_used_bytes / fs_size_bytes) * 100)  # Percentage
+                else:
+                    # Fallback for Raspberry Pi 5 with 100GB SD card (typical)
+                    storage_total = 100
+                    storage_usage = 50
             except Exception as e:
-                print(f"Error getting storage info for node {node_name}: {e}")
+                print(f"Error getting storage metrics for node {node_name}: {e}")
             
-            # Network metrics - estimate based on node information
-            network_bandwidth = 50  # Placeholder
+            # Get network metrics from Prometheus node-exporter
+            network_bandwidth = 50  # Default placeholder in MB/s
+            
+            try:
+                # Query Prometheus for network receive rate (last 5 min)
+                net_rx_query = f'rate(node_network_receive_bytes_total{{instance="{ip_address}:{NODE_EXPORTER_PORT}",device="eth0"}}[5m])'
+                net_rx_result = query_prometheus(net_rx_query)
+                
+                # Query Prometheus for network transmit rate (last 5 min)
+                net_tx_query = f'rate(node_network_transmit_bytes_total{{instance="{ip_address}:{NODE_EXPORTER_PORT}",device="eth0"}}[5m])'
+                net_tx_result = query_prometheus(net_tx_query)
+                
+                if net_rx_result and net_tx_result:
+                    # Convert bytes/sec to MB/s
+                    net_rx_bytes_per_sec = float(net_rx_result[0]['value'][1])
+                    net_tx_bytes_per_sec = float(net_tx_result[0]['value'][1])
+                    
+                    # Calculate total network bandwidth in MB/s
+                    network_bandwidth = round((net_rx_bytes_per_sec + net_tx_bytes_per_sec) / (1024 * 1024), 1)
+                else:
+                    # Fallback for Raspberry Pi 5 with Gigabit Ethernet
+                    # Typical usable bandwidth is around 50 MB/s due to SD card and other limitations
+                    network_bandwidth = 50
+            except Exception as e:
+                print(f"Error getting network metrics for node {node_name}: {e}")
             
             # Update summary data
             formatted_data['summary']['totalCpuUsage'] += cpu_percent
             formatted_data['summary']['totalRamUsage'] += ram_percent
             formatted_data['summary']['totalStorageUsage'] += storage_usage
+            formatted_data['summary']['totalNetworkUsage'] += network_bandwidth
             
             if node_status != 'danger':
                 formatted_data['summary']['nodesOnline'] += 1
@@ -156,13 +220,6 @@ def get_cluster_metrics():
             if node.metadata.labels and ('node-role.kubernetes.io/master' in node.metadata.labels or 
                                         'node-role.kubernetes.io/control-plane' in node.metadata.labels):
                 role = 'Control Plane'
-            
-            # Get IP address
-            ip_address = 'Unknown'
-            for address in node.status.addresses:
-                if address.type == 'InternalIP':
-                    ip_address = address.address
-                    break
             
             # Add node data
             node_info = {
@@ -191,9 +248,6 @@ def get_cluster_metrics():
             formatted_data['summary']['totalCpuUsage'] = round(formatted_data['summary']['totalCpuUsage'] / formatted_data['summary']['nodesTotal'])
             formatted_data['summary']['totalRamUsage'] = round(formatted_data['summary']['totalRamUsage'] / formatted_data['summary']['nodesTotal'])
             formatted_data['summary']['totalStorageUsage'] = round(formatted_data['summary']['totalStorageUsage'] / formatted_data['summary']['nodesTotal'])
-        
-        # Network is cumulative
-        formatted_data['summary']['totalNetworkUsage'] = network_bandwidth * formatted_data['summary']['nodesTotal']
         
         return jsonify(formatted_data)
     except Exception as e:
